@@ -1,66 +1,132 @@
+from pathlib import Path
+from typing import List
+
 import pandas as pd
 
-FILE_PATH = "/home/shreshika_/AIAgents/aiagents/leads.xlsx"
+from models.lead import Lead
+from utils.logger import logger
 
 
-def read_leads():
+class ExcelService:
+    def __init__(self,file_path:str):
+        self.file_path = Path(file_path)
+        self.df = pd.read_excel(self.file_path)
+        text_columns = [
+            "Industry",
+            "Buyer Persona",
+            "Response Status",
+            "Notes",
+            "AI Suggested Outreach Message",
+            "Email Verified (Y/N)"
+        ]
 
-    df = pd.read_excel(FILE_PATH)
+        self.df[text_columns] = (
+            self.df[text_columns]
+            .astype("object")
+        )
 
-    text_cols = [
-        "Industry",
-        "Buyer Persona",
-        "Email Verified (Y/N)",
-        "Response Status",
-        "Notes",
-        "AI Suggested Outreach Message"
-    ]
+        self.df[text_columns] = (
+            self.df[text_columns]
+            .fillna("")
+        )
 
-    for col in text_cols:
-        df[col] = df[col].astype("object")
+    def load_leads(self)->List[Lead]:
+        leads = []
 
-    return df
+        for _,row in self.df.iterrows():
+            email_verified = row["Email Verified (Y/N)"]
+            priority_score = row["Lead Priority (AI Score)"]
+
+            # Handle NaN values
+            if pd.isna(email_verified) or email_verified == "":
+                email_verified = None
+            else:
+                email_verified = str(email_verified).upper() == "Y"
+
+            if pd.isna(priority_score):
+                priority_score = None
+            else:
+                priority_score = int(priority_score)
+            lead = Lead(
+
+                lead_name=row["Lead Name"],
+                email=row["Email"],
+                contact_number=str(row["Contact Number"]),
+                company=row["Company"],
+                industry=row["Industry"],
+                email_verified=email_verified,
+                priority_score=priority_score,
+                buyer_persona=row["Buyer Persona"],
+                response_status=row["Response Status"],
+                notes=row["Notes"],
+                outreach_message=row["AI Suggested Outreach Message"],
+                status=row["Status"]
+            )
+
+            leads.append(lead)
+            
+        logger.info(f"{len(leads)} leads loaded.")
+
+        return leads
+
+    def get_pending_leads(self)->List[Lead]:
+        leads = self.load_leads()
+        return [lead for lead in leads if lead.status.lower() == "pending"]
+    
+    # def update_lead(self,email:str,lead:Lead):
+    #     idx = self.df[self.df["Email"] == email].index
+    #     if len(idx) == 0:
+    #         return 
+    #     i = idx[0]
+
+    #     self.df.loc[i, "Industry"] = lead.industry
+    #     self.df.loc[i, "Buyer Persona"] = lead.buyer_persona
+    #     self.df.loc[i, "Lead Priority (AI Score)"] = lead.priority_score
+    #     self.df.loc[i, "Email Verified (Y/N)"] = lead.email_verified
+
+    def update_lead(self, email: str, lead: Lead):
+
+        idx = self.df[self.df["Email"] == email].index
+
+        if len(idx) == 0:
+            return
+
+        i = idx[0]
+
+        self.df.loc[i, "Industry"] = lead.industry
+
+        self.df.loc[i, "Buyer Persona"] = (
+            lead.buyer_persona
+            if isinstance(lead.buyer_persona, str)
+            else str(lead.buyer_persona)
+        )
+
+        self.df.loc[i, "Lead Priority (AI Score)"] = lead.priority_score
+
+        self.df.loc[i, "Email Verified (Y/N)"] = (
+            "Y" if lead.email_verified else "N"
+        )
 
 
-def get_pending_leads():
+    def update_outreach(self,email:str,message:str):
+        idx = self.df[self.df["Email"] == email].index
+        if len(idx) == 0:
+            return 
+        self.df.loc[idx[0],"AI Suggested Outreach Message"] = message
 
-    df = read_leads()
+    def update_response(self,email:str,lead:Lead):
+        idx = self.df[self.df["Email"] == email].index
+        if len(idx) == 0:
+            return 
+        self.df.loc[idx[0],"Response Status"] = lead.response_status
+        self.df.loc[idx[0],"Notes"] = lead.notes
 
-    return df[df["Status"] == "Pending"]
+    def mark_processed(self,email:str):
+        idx = self.df[self.df["Email"] == email].index
+        if len(idx) == 0:
+            return 
+        self.df.loc[idx[0],"Status"] = "Processed"
 
-def update_lead(row_index, result):
-
-    df = read_leads()
-    df.loc[row_index, "Industry"] = result["industry"]
-    df.loc[row_index, "Buyer Persona"] = result["buyer_persona"]
-    df.loc[
-        row_index,
-        "Lead Priority (AI Score)"
-    ] = int(result["priority_score"])
-    df.loc[
-        row_index,
-        "Email Verified (Y/N)"
-    ] = result["email_verified"]
-    df.to_excel(FILE_PATH, index=False)
-
-def update_response_status(row_index,status):
-
-    df = read_leads()
-
-    df.loc[row_index,"Response Status"] = status
-
-    df.to_excel(
-        FILE_PATH,
-        index=False
-    )
-
-def mark_processed(row_index):
-
-    df = read_leads()
-
-    df.loc[row_index,"Status"] = "Processed"
-
-    df.to_excel(
-        FILE_PATH,
-        index=False
-    )
+    def save(self):
+        self.df.to_excel(self.file_path,index=False)
+        logger.info("Excel updated succeddfully.")

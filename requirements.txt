@@ -1,0 +1,11 @@
+groq
+langgraph
+langchain
+python-dotenv
+pandas
+openpyxl
+pydantic
+email-validator
+dnspython
+requests
+sendgrid

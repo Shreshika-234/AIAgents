@@ -1,21 +1,33 @@
-from services.excel_service import read_leads
+from services.groq_service import GroqService
+from services.excel_service import ExcelService
 
-def generate_report():
+from utils.logger import logger
 
-    df = read_leads()
 
-    total_leads = len(df)
+class ReportAgent:
 
-    verified = (df["Email Verified (Y/N)"] == "Y").sum()
+    def __init__(self):
+        self.groq = GroqService()
 
-    avg_score = df["Lead Priority (AI Score)"].mean()
+    def generate_report(self,excel: ExcelService) -> str:
 
-    report = f"""
-        Campaign Summary
-        Total Leads: {total_leads}
-        Verified Emails: {verified}
-        Average Priority Score:
-        {avg_score:.2f}
-    """
+        logger.info("Generating Campaign Report")
 
-    return report
+        df = excel.df
+        total = len(df)
+        # verified = (df["Email Verified (Y/N)"] == True).sum()
+        verified = (df["Email Verified (Y/N)"] == "Y").sum()
+        processed = (df["Status"] == "Processed").sum()
+        interested = (df["Response Status"] == "Interested").sum()
+
+        summary = f"""
+                Total Leads : {total}
+                Verified : {verified}
+                Processed : {processed}
+                Interested : {interested}
+
+        """
+
+        report = self.groq.generate_campaign_report(summary)
+
+        return report
